@@ -1,0 +1,15 @@
+AlphaSplit Lite 开发检查点 27
+
+本次新增：
+1. .github/workflows/build-windows.yml：在 GitHub Actions Windows x64 runner 上执行 MSVC 编译，尝试安装 NDI 6 SDK，上传 EXE 和构建报告；同时在 Ubuntu runner 运行核心测试。
+2. 云端生成EXE_操作指南.md：说明首次设置、触发工作流、下载构建产物和反馈错误日志的步骤。
+3. 构建产物步骤不会上传 Processing.NDI.Lib.x64.dll，避免未经核验就重新分发 NDI Runtime 二进制。
+
+本地验证：本容器没有 Windows MSVC、Windows SDK、NDI SDK，因此无法本地构建 Windows EXE。下一验证点是用户将工作流提交到 GitHub 后首次运行 Actions。
+
+
+第二十八版（2026-10-18）：改进 GitHub Actions Windows 构建诊断，增加 SDK 安装报告、签名状态记录、SDK 文件定位记录及 30 分钟任务超时。当前环境没有 Windows 编译器/NDI SDK，也没有已连接的 GitHub 仓库，因此未执行云端构建，未生成已验证 EXE。
+
+第二十九版（2026-10-18）：增加 tests/validate_build_package.py，以无第三方依赖的静态检查验证 Windows 云端构建链路关键环节（MSVC x64 初始化、NDI SDK 文件检查、build.bat 调用、EXE 归档、Runtime DLL 排除、退出快捷键及核心格式处理），并把该检查加入 Ubuntu CI。验证结果：静态检查 16/16 通过；AlphaSplitCore 单元测试 12/12 通过（含 300 组随机帧及 1080p 到目标画布测试）。
+
+限制仍然存在：静态检查不等于 MSVC 编译，当前环境没有 Windows MSVC/Windows SDK/完整 NDI SDK，也没有已连接的 GitHub 仓库；尚未运行真实 Windows Actions，尚未生成或验证 EXE。下一项真正的里程碑必须是在 GitHub Actions 中执行 Windows 构建，并根据实际报告修复问题。

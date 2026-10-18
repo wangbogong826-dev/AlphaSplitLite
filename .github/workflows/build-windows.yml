@@ -1,0 +1,119 @@
+name: Build AlphaSplit Lite (Windows x64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run portable image-core tests
+        run: bash tests/run_core_tests.sh
+      - name: Validate Windows build package wiring
+        run: python3 tests/validate_build_package.py
+
+  windows-exe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize MSVC x64 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Download and install official NDI 6 SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setupReport = Join-Path $env:GITHUB_WORKSPACE 'NDI_SDK_setup_report.txt'
+          "NDI SDK setup started: $(Get-Date -Format o)" | Set-Content -Path $setupReport -Encoding utf8
+          try {
+            $installer = Join-Path $env:RUNNER_TEMP 'NDI 6 SDK.exe'
+            $uri = 'https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20SDK.exe'
+            Add-Content -Path $setupReport -Value "Official SDK URL: $uri"
+            Write-Host "Downloading official NDI SDK from $uri"
+            Invoke-WebRequest -Uri $uri -OutFile $installer
+            $installerInfo = Get-Item $installer
+            Add-Content -Path $setupReport -Value "Downloaded installer bytes: $($installerInfo.Length)"
+            if ($installerInfo.Length -lt 1MB) {
+              throw 'NDI SDK installer download looks incomplete (less than 1 MiB).'
+            }
+            $signature = Get-AuthenticodeSignature -FilePath $installer
+            Add-Content -Path $setupReport -Value "Installer signature status: $($signature.Status)"
+            if ($signature.Status -notin @('Valid','NotSigned')) {
+              throw "Installer signature validation returned unexpected status: $($signature.Status)"
+            }
+            $proc = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+            Add-Content -Path $setupReport -Value "NDI SDK installer exit code: $($proc.ExitCode)"
+            if ($proc.ExitCode -ne 0) {
+              throw "NDI SDK installer failed with exit code $($proc.ExitCode)."
+            }
+            $roots = @(
+              (Join-Path $env:ProgramFiles 'NDI'),
+              (Join-Path ${env:ProgramFiles(x86)} 'NDI')
+            ) | Where-Object { $_ -and (Test-Path $_) }
+            $header = $null
+            foreach ($root in $roots) {
+              Add-Content -Path $setupReport -Value "Searching SDK root: $root"
+              $header = Get-ChildItem -Path $root -Filter 'Processing.NDI.Lib.h' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($header) { break }
+            }
+            if (-not $header) {
+              throw 'Could not find Processing.NDI.Lib.h after installing the NDI SDK. See this step log and the setup report.'
+            }
+            $sdkRoot = Split-Path $header.DirectoryName -Parent
+            $lib = Join-Path $sdkRoot 'Lib\x64\Processing.NDI.Lib.x64.lib'
+            Add-Content -Path $setupReport -Value "SDK root candidate: $sdkRoot"
+            if (-not (Test-Path $lib)) {
+              throw "NDI SDK header found, but x64 import library is missing: $lib"
+            }
+            "NDI_SDK_DIR=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "NDI_SDK_DIR=$sdkRoot" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            Add-Content -Path $setupReport -Value 'SDK header and x64 import library both found.'
+          }
+          catch {
+            Add-Content -Path $setupReport -Value "ERROR: $($_.Exception.Message)"
+            throw
+          }
+          finally {
+            Add-Content -Path $setupReport -Value "NDI SDK setup finished: $(Get-Date -Format o)"
+          }
+      - name: Build Windows x64 EXE
+        shell: cmd
+        run: |
+          call build.bat < NUL > AlphaSplitLite_build_report.txt 2>&1
+          set BUILD_RC=%ERRORLEVEL%
+          type AlphaSplitLite_build_report.txt
+          if not "%BUILD_RC%"=="0" exit /b %BUILD_RC%
+          if not exist build\AlphaSplitLite.exe exit /b 20
+      - name: Stage EXE and build report (do not redistribute NDI runtime DLL)
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          if (Test-Path 'build\AlphaSplitLite.exe') {
+            Copy-Item 'build\AlphaSplitLite.exe' 'artifact\AlphaSplitLite.exe' -Force
+          }
+          if (Test-Path 'AlphaSplitLite_build_report.txt') {
+            Copy-Item 'AlphaSplitLite_build_report.txt' 'artifact\AlphaSplitLite_build_report.txt' -Force
+          }
+          if (Test-Path 'NDI_SDK_setup_report.txt') {
+            Copy-Item 'NDI_SDK_setup_report.txt' 'artifact\NDI_SDK_setup_report.txt' -Force
+          }
+          if (Test-Path 'build\Processing.NDI.Lib.x64.dll') {
+            Remove-Item 'build\Processing.NDI.Lib.x64.dll' -Force
+          }
+      - name: Upload Windows build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AlphaSplitLite-Windows-x64
+          path: artifact/*
+          if-no-files-found: warn
+          retention-days: 14

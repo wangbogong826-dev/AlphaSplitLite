@@ -1,0 +1,12 @@
+今晚优先目标：在目标 Windows 10 x64 笔记本上真实编译出 AlphaSplitLite.exe。
+
+请在已安装 Visual Studio C++ Build Tools 的电脑上，先从开始菜单打开：
+“x64 Native Tools Command Prompt for VS”。
+进入本文件夹后运行“快速诊断并编译.bat”。
+
+该脚本会记录编译器检查、NDI SDK 检查和完整构建输出，生成 AlphaSplitLite_build_report.txt。
+若成功，预期文件：build\AlphaSplitLite.exe。
+若失败，将日志原样发回，按第一条真实错误修复。
+
+重要：NDI Runtime 不等于 NDI SDK；编译需要包含 Include\Processing.NDI.Lib.h 和 Lib\x64\Processing.NDI.Lib.x64.lib 的 SDK。
+本开发环境未提供 Windows 编译器和完整 NDI SDK，因此此包尚未在这里完成 Windows EXE 编译或真实硬件验收。

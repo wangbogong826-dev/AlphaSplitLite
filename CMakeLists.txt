@@ -1,0 +1,35 @@
+cmake_minimum_required(VERSION 3.20)
+project(AlphaSplitLite LANGUAGES CXX)
+
+if(NOT WIN32)
+  message(FATAL_ERROR "AlphaSplitLite 主程序目前仅支持 Windows；Linux/macOS 仅用于运行图像核心测试。")
+endif()
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "请使用 x64 编译器生成 Windows 10 x64 版本。")
+endif()
+
+set(NDI_SDK_DIR "" CACHE PATH "NDI SDK 根目录（包含 Include 和 Lib/x64）")
+if(NOT NDI_SDK_DIR AND DEFINED ENV{NDI_SDK_DIR})
+  set(NDI_SDK_DIR "$ENV{NDI_SDK_DIR}")
+endif()
+if(NOT EXISTS "${NDI_SDK_DIR}/Include/Processing.NDI.Lib.h")
+  message(FATAL_ERROR "找不到 NDI SDK 头文件。请设置 -DNDI_SDK_DIR=完整的 NDI SDK 根目录；Runtime 不包含开发头文件。")
+endif()
+if(NOT EXISTS "${NDI_SDK_DIR}/Lib/x64/Processing.NDI.Lib.x64.lib")
+  message(FATAL_ERROR "找不到 NDI x64 导入库：${NDI_SDK_DIR}/Lib/x64/Processing.NDI.Lib.x64.lib")
+endif()
+
+add_executable(AlphaSplitLite
+  src/AlphaSplitLite.cpp
+  src/AlphaSplitCore.cpp
+)
+target_compile_features(AlphaSplitLite PRIVATE cxx_std_17)
+target_compile_definitions(AlphaSplitLite PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_include_directories(AlphaSplitLite PRIVATE "${NDI_SDK_DIR}/Include")
+target_link_directories(AlphaSplitLite PRIVATE "${NDI_SDK_DIR}/Lib/x64")
+target_link_libraries(AlphaSplitLite PRIVATE Processing.NDI.Lib.x64 User32 Gdi32 Shell32)
+if(MSVC)
+  target_compile_options(AlphaSplitLite PRIVATE /W4 /EHsc /utf-8)
+  target_link_options(AlphaSplitLite PRIVATE /SUBSYSTEM:CONSOLE)
+endif()
+set_target_properties(AlphaSplitLite PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
