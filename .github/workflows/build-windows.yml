@@ -38,7 +38,37 @@ jobs:
             $uri = 'https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20SDK.exe'
             Add-Content -Path $setupReport -Value "Official SDK URL: $uri"
             Write-Host "Downloading official NDI SDK from $uri"
-            Invoke-WebRequest -Uri $uri -OutFile $installer
+            
+            $downloadSucceeded = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "NDI SDK download attempt $attempt of 3"
+                Add-Content -Path $setupReport -Value "Download attempt $attempt started: $(Get-Date -Format o)"
+                Invoke-WebRequest -Uri $uri -OutFile $installer -TimeoutSec 90 -UseBasicParsing
+                if (-not (Test-Path $installer) -or (Get-Item $installer).Length -lt 1MB) {
+                  throw 'Downloaded file is missing or smaller than 1 MiB.'
+                }
+                $downloadSucceeded = $true
+                Add-Content -Path $setupReport -Value "Download attempt $attempt succeeded."
+                break
+              }
+              catch {
+                $message = $_.Exception.Message
+                Write-Warning "NDI SDK download attempt $attempt failed: $message"
+                Add-Content -Path $setupReport -Value "Download attempt $attempt failed: $message"
+                if (Test-Path $installer) {
+                  Remove-Item $installer -Force -ErrorAction SilentlyContinue
+                }
+                if ($attempt -lt 3) {
+                  Write-Host "Retrying in 10 seconds..."
+                  Start-Sleep -Seconds 10
+                }
+              }
+            }
+            if (-not $downloadSucceeded) {
+              throw 'NDI SDK download failed after 3 attempts. See the log above.'
+            }
+
             $installerInfo = Get-Item $installer
             Add-Content -Path $setupReport -Value "Downloaded installer bytes: $($installerInfo.Length)"
             if ($installerInfo.Length -lt 1MB) {
